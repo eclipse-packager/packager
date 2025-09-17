@@ -83,7 +83,7 @@ public class RpmInputStream extends InputStream {
 
         if (this.payloadStream == null) {
             this.payloadStream = setupPayloadStream();
-            this.cpioStream = new CpioArchiveInputStream(this.payloadStream, "UTF-8"); // we did ensure that we only support CPIO before
+            this.cpioStream = new CpioArchiveInputStream(this.payloadStream, "UTF-8", payloadHeader.getLongList(RpmTag.LONG_FILE_SIZES)); // we did ensure that we only support CPIO before
         }
     }
 

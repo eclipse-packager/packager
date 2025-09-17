@@ -32,6 +32,7 @@ import java.nio.file.Path;
 
 import org.bouncycastle.openpgp.PGPException;
 import org.eclipse.packager.rpm.HashAlgorithm;
+import org.eclipse.packager.rpm.RpmFormat;
 import org.eclipse.packager.rpm.RpmSignatureTag;
 import org.eclipse.packager.rpm.parse.InputHeader;
 import org.eclipse.packager.rpm.parse.RpmInputStream;
@@ -73,7 +74,7 @@ class RpmFileSignatureProcessorTest {
 
         try (final OutputStream resultOut = Files.newOutputStream(signedRpm, CREATE_NEW); final InputStream privateKeyStream = Files.newInputStream(PRIVATE_KEY)) {
             // Sign the RPM
-            RpmFileSignatureProcessor.perform(RPM, privateKeyStream, PASSPHRASE, resultOut, HashAlgorithm.SHA256);
+            RpmFileSignatureProcessor.perform(RPM, privateKeyStream, PASSPHRASE, resultOut, HashAlgorithm.SHA256, RpmFormat.RPM_4.getFormat());
 
             // Read the signed rpm file
             try (final RpmInputStream initialRpm = new RpmInputStream(new BufferedInputStream(Files.newInputStream(RPM))); final RpmInputStream rpmSigned = new RpmInputStream(new BufferedInputStream(Files.newInputStream(signedRpm)))) {

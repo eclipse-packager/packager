@@ -31,9 +31,9 @@ public class Rpms {
 
     public static final byte[] EMPTY_128;
 
-    public static final int IMMUTABLE_TAG_SIGNATURE = 62;
+    public static final int IMMUTABLE_TAG_SIGNATURE = RpmTag.HEADER_SIGNATURES.getValue();
 
-    public static final int IMMUTABLE_TAG_HEADER = 63;
+    public static final int IMMUTABLE_TAG_HEADER = RpmTag.HEADER_IMMUTABLE.getValue();
 
     static {
         EMPTY_128 = new byte[128];

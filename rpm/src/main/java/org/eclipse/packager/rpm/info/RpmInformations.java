@@ -30,6 +30,7 @@ import org.eclipse.packager.rpm.info.RpmInformation.Dependency;
 import org.eclipse.packager.rpm.parse.InputHeader;
 import org.eclipse.packager.rpm.parse.RpmInputStream;
 
+import static org.eclipse.packager.rpm.RpmSignatureTag.LONGARCHIVESIZE;
 import static org.eclipse.packager.rpm.RpmSignatureTag.PAYLOAD_SIZE;
 import static org.eclipse.packager.rpm.RpmTag.ARCH;
 import static org.eclipse.packager.rpm.RpmTag.ARCHIVE_SIZE;
@@ -45,6 +46,7 @@ import static org.eclipse.packager.rpm.RpmTag.DESCRIPTION;
 import static org.eclipse.packager.rpm.RpmTag.EPOCH;
 import static org.eclipse.packager.rpm.RpmTag.GROUP;
 import static org.eclipse.packager.rpm.RpmTag.LICENSE;
+import static org.eclipse.packager.rpm.RpmTag.LONGSIZE;
 import static org.eclipse.packager.rpm.RpmTag.NAME;
 import static org.eclipse.packager.rpm.RpmTag.OBSOLETE_FLAGS;
 import static org.eclipse.packager.rpm.RpmTag.OBSOLETE_NAME;
@@ -102,10 +104,19 @@ public final class RpmInformations {
         result.setSourcePackage(header.getString(SOURCE_PACKAGE));
 
         result.setInstalledSize(RpmTagValue.toLong(header.getInteger(SIZE)));
+
+        if (result.getInstalledSize() == null) {
+            result.setInstalledSize(header.getLong(LONGSIZE));
+        }
+
         result.setArchiveSize(RpmTagValue.toLong(header.getInteger(ARCHIVE_SIZE)));
 
         if (result.getArchiveSize() == null) {
             result.setArchiveSize(RpmTagValue.toLong(signature.getInteger(PAYLOAD_SIZE)));
+        }
+
+        if (result.getArchiveSize() == null) {
+            result.setArchiveSize(signature.getLong(LONGARCHIVESIZE));
         }
 
         // version

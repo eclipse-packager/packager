@@ -44,7 +44,7 @@ import org.eclipse.packager.rpm.parse.RpmInputStream;
 
 /**
  * Sign existing RPM file by calling
- * {@link #perform(Path, InputStream, String, OutputStream, HashAlgorithm)}
+ * {@link #perform(Path, InputStream, String, OutputStream, HashAlgorithm, int)}
  */
 public class RpmFileSignatureProcessor {
     private RpmFileSignatureProcessor() {
@@ -57,40 +57,42 @@ public class RpmFileSignatureProcessor {
      * support only PGP. Write the result into the given {@link OutputStream}
      * </p>
      *
-     * @param rpm : RPM file
-     * @param privateKeyIn : encrypted private key as {@link InputStream}
-     * @param passphrase : passphrase to decrypt the private key
-     * @param out : {@link OutputStream} to write to
-     * @throws IOException
-     * @throws PGPException
+     * @param rpm the RPM file
+     * @param privateKeyIn the encrypted private key as {@link InputStream}
+     * @param passphrase the passphrase to decrypt the private key
+     * @param out the {@link OutputStream} to write to
+     * @param hashAlgorithm the hash algorithm
+     * @param rpmFormat the RPM format
+     * @throws PGPException if the private key cannot be extracted
+     * @throws IOException if error happened with InputStream
      */
-    public static void perform(Path rpm, InputStream privateKeyIn, String passphrase, OutputStream out, HashAlgorithm hashAlgorithm)
-        throws IOException, PGPException {
+    public static void perform(final Path rpm, final InputStream privateKeyIn, final String passphrase, final OutputStream out, final HashAlgorithm hashAlgorithm, final int rpmFormat)
+        throws  IOException, PGPException {
 
         final long leadLength = 96;
-        long signatureHeaderStart;
-        long signatureHeaderLength;
-        long payloadHeaderStart;
-        long payloadHeaderLength;
-        long payloadStart;
-        long archiveSize;
-        long payloadSize;
-        byte[] signatureHeader;
+        final long signatureHeaderStart;
+        final long signatureHeaderLength;
+        final long payloadHeaderStart;
+        final long payloadHeaderLength;
+        final long payloadStart;
+        final long archiveSize;
+        final long payloadSize;
+        final byte[] signatureHeader;
 
         if (!Files.exists(rpm)) {
             throw new IOException("The file " + rpm.getFileName() + " does not exist");
         }
 
         // Extract private key
-        PGPPrivateKey privateKey = getPrivateKey(privateKeyIn, passphrase);
+        final PGPPrivateKey privateKey = getPrivateKey(privateKeyIn, passphrase);
 
         // Get the information of the RPM
-        try (RpmInputStream rpmIn = new RpmInputStream(new BufferedInputStream(Files.newInputStream(rpm)))) {
+        try (final RpmInputStream rpmIn = new RpmInputStream(new BufferedInputStream(Files.newInputStream(rpm)))) {
             signatureHeaderStart = rpmIn.getSignatureHeader().getStart();
             signatureHeaderLength = rpmIn.getSignatureHeader().getLength();
             payloadHeaderStart = rpmIn.getPayloadHeader().getStart();
             payloadHeaderLength = rpmIn.getPayloadHeader().getLength();
-            RpmInformation info = RpmInformations.makeInformation(rpmIn);
+            final RpmInformation info = RpmInformations.makeInformation(rpmIn);
             payloadStart = info.getHeaderEnd();
             archiveSize = info.getArchiveSize();
         }
@@ -101,18 +103,18 @@ public class RpmFileSignatureProcessor {
         }
 
         // Build the signature header by digest payload header + payload
-        try (FileChannel channelIn = FileChannel.open(rpm)) {
+        try (final FileChannel channelIn = FileChannel.open(rpm)) {
             payloadSize = channelIn.size() - payloadStart;
             channelIn.position(leadLength + signatureHeaderLength);
-            ByteBuffer payloadHeaderBuff = ByteBuffer.allocate((int) payloadHeaderLength);
+            final ByteBuffer payloadHeaderBuff = ByteBuffer.allocate((int) payloadHeaderLength);
             IOUtils.readFully(channelIn, payloadHeaderBuff);
-            ByteBuffer payloadBuff = ByteBuffer.allocate((int) payloadSize);
+            final ByteBuffer payloadBuff = ByteBuffer.allocate((int) payloadSize);
             IOUtils.readFully(channelIn, payloadBuff);
-            signatureHeader = getSignature(privateKey, payloadHeaderBuff, payloadBuff, archiveSize, hashAlgorithm);
+            signatureHeader = getSignature(privateKey, payloadHeaderBuff, payloadBuff, archiveSize, hashAlgorithm, rpmFormat);
         }
 
         // Write to the OutputStream
-        try (InputStream in = Files.newInputStream(rpm)) {
+        try (final InputStream in = Files.newInputStream(rpm)) {
             IOUtils.copyLarge(in, out, 0, leadLength);
             IOUtils.skip(in, signatureHeaderLength);
             out.write(signatureHeader);
@@ -126,31 +128,32 @@ public class RpmFileSignatureProcessor {
      * "https://rpm-software-management.github.io/rpm/manual/format.html">https://rpm-software-management.github.io/rpm/manual/format.html</a>
      * </p>
      *
-     * @param privateKey : private key already extracted
-     * @param payloadHeader : Payload's header as {@link ByteBuffer}
-     * @param payload : Payload as {@link ByteBuffer}
-     * @param archiveSize : archiveSize retrieved in {@link RpmInformation}
-     * @param hashAlgorithm
+     * @param privateKey the private key already extracted
+     * @param payloadHeader the Payload's header as {@link ByteBuffer}
+     * @param payload the Payload as {@link ByteBuffer}
+     * @param archiveSize the archiveSize retrieved in {@link RpmInformation}
+     * @param hashAlgorithm the hash algorithm
+     * @param rpmFormat the RPM format
      * @return the signature header as a bytes array
-     * @throws IOException
+     * @throws IOException if an error occurs while writing the signature
      */
-    private static byte[] getSignature(PGPPrivateKey privateKey, ByteBuffer payloadHeader, ByteBuffer payload,
-        long archiveSize, HashAlgorithm hashAlgorithm) throws IOException {
-        Header<RpmSignatureTag> signatureHeader = new Header<>();
-        List<SignatureProcessor> signatureProcessors = getSignatureProcessors(privateKey, hashAlgorithm);
+    private static byte[] getSignature(final PGPPrivateKey privateKey, final ByteBuffer payloadHeader, final ByteBuffer payload,
+                                       final long archiveSize, final HashAlgorithm hashAlgorithm, final int rpmFormat) throws IOException {
+        final Header<RpmSignatureTag> signatureHeader = new Header<>();
+        final List<SignatureProcessor> signatureProcessors = getSignatureProcessors(privateKey, hashAlgorithm, rpmFormat);
         payloadHeader.flip();
         payload.flip();
-        for (SignatureProcessor processor : signatureProcessors) {
+        for (final SignatureProcessor processor : signatureProcessors) {
             processor.init(archiveSize);
             processor.feedHeader(payloadHeader.slice());
             processor.feedPayloadData(payload.slice());
             processor.finish(signatureHeader);
         }
-        ByteBuffer signatureBuf = Headers.render(signatureHeader.makeEntries(), true, Rpms.IMMUTABLE_TAG_SIGNATURE);
+        final ByteBuffer signatureBuf = Headers.render(signatureHeader.makeEntries(), true, Rpms.IMMUTABLE_TAG_SIGNATURE);
         final int payloadSize = signatureBuf.remaining();
         final int padding = Rpms.padding(payloadSize);
-        byte[] signature = safeReadBuffer(signatureBuf);
-        ByteArrayOutputStream result = new ByteArrayOutputStream();
+        final byte[] signature = safeReadBuffer(signatureBuf);
+        final ByteArrayOutputStream result = new ByteArrayOutputStream();
         result.write(signature);
         if (padding > 0) {
             result.write(safeReadBuffer(ByteBuffer.wrap(Rpms.EMPTY_128, 0, padding)));
@@ -164,12 +167,11 @@ public class RpmFileSignatureProcessor {
      * array
      * </p>
      *
-     * @param buf : the {@link ByteBuffer} to read
+     * @param buf the {@link ByteBuffer} to read
      * @return a bytes array
-     * @throws IOException
      */
-    private static byte[] safeReadBuffer(ByteBuffer buf) throws IOException {
-        ByteArrayOutputStream result = new ByteArrayOutputStream();
+    private static byte[] safeReadBuffer(final ByteBuffer buf) {
+        final ByteArrayOutputStream result = new ByteArrayOutputStream();
         while (buf.hasRemaining()) {
             result.write(buf.get());
         }
@@ -182,16 +184,18 @@ public class RpmFileSignatureProcessor {
      * {@link SignatureProcessors}
      * </p>
      *
-     * @param privateKey : the private key, already extracted
+     * @param privateKey the private key, already extracted
+     * @param hashAlgorithm the hash algorithm
+     * @param rpmFormat the RPM format
      * @return {@link List<SignatureProcessor>} of {@link SignatureProcessor}
      */
-    private static List<SignatureProcessor> getSignatureProcessors(PGPPrivateKey privateKey, HashAlgorithm hashAlgorithm) {
-        List<SignatureProcessor> signatureProcessors = new ArrayList<>();
-        signatureProcessors.add(SignatureProcessors.size());
+    private static List<SignatureProcessor> getSignatureProcessors(final PGPPrivateKey privateKey, final HashAlgorithm hashAlgorithm, final int rpmFormat) {
+        final List<SignatureProcessor> signatureProcessors = new ArrayList<>();
+        signatureProcessors.add(SignatureProcessors.size(rpmFormat));
         signatureProcessors.add(SignatureProcessors.sha256Header());
         signatureProcessors.add(SignatureProcessors.sha1Header());
         signatureProcessors.add(SignatureProcessors.md5());
-        signatureProcessors.add(SignatureProcessors.payloadSize());
+        signatureProcessors.add(SignatureProcessors.payloadSize(rpmFormat));
         signatureProcessors.add(new RsaSignatureProcessor(privateKey, hashAlgorithm));
         return signatureProcessors;
     }
@@ -201,17 +205,17 @@ public class RpmFileSignatureProcessor {
      * Decrypt and retrieve the private key
      * </p>
      *
-     * @param privateKeyIn : InputStream containing the encrypted private key
-     * @param passphrase : passphrase to decrypt private key
+     * @param privateKeyIn InputStream containing the encrypted private key
+     * @param passphrase passphrase to decrypt private key
      * @return private key as {@link PGPPrivateKey}
-     * @throws PGPException : if the private key cannot be extrated
-     * @throws IOException : if error happened with InputStream
+     * @throws PGPException if the private key cannot be extracted
+     * @throws IOException if error happened with InputStream
      */
-    private static PGPPrivateKey getPrivateKey(InputStream privateKeyIn, String passphrase)
+    private static PGPPrivateKey getPrivateKey(final InputStream privateKeyIn, final String passphrase)
         throws PGPException, IOException {
-        ArmoredInputStream armor = new ArmoredInputStream(privateKeyIn);
-        PGPSecretKeyRing secretKeyRing = new BcPGPSecretKeyRing(armor);
-        PGPSecretKey secretKey = secretKeyRing.getSecretKey();
+        final ArmoredInputStream armor = new ArmoredInputStream(privateKeyIn);
+        final PGPSecretKeyRing secretKeyRing = new BcPGPSecretKeyRing(armor);
+        final PGPSecretKey secretKey = secretKeyRing.getSecretKey();
         return secretKey.extractPrivateKey(new BcPBESecretKeyDecryptorBuilder(new BcPGPDigestCalculatorProvider())
             .build(passphrase.toCharArray()));
     }

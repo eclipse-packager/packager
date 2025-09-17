@@ -229,7 +229,7 @@ public class Header<T extends RpmBaseTag> implements ReadableHeader<T> {
         this.entries.put(tag.getValue(), makeEntry(tag.getValue(), value));
     }
 
-    public void putSize(long value, final T intTag, final T longTag) {
+    public void putSize(long value, final T intTag, final T longTag, final int rpmFormat) {
         Objects.requireNonNull(intTag);
         Objects.requireNonNull(longTag);
 
@@ -237,10 +237,20 @@ public class Header<T extends RpmBaseTag> implements ReadableHeader<T> {
             value = 0;
         }
 
-        if (value > Integer.MAX_VALUE) {
-            putLong(longTag, value);
-        } else {
+        if (rpmFormat < 6 && value < Integer.MAX_VALUE) {
             putInt(intTag, (int) value);
+        } else {
+            putLong(longTag, value);
+        }
+    }
+
+    public long getSize(final T intTag, final T longTag) {
+        if (hasTag(longTag)) {
+            return getLong(longTag);
+        } else if (hasTag(intTag)) {
+            return getInteger(intTag);
+        } else {
+            throw new IllegalArgumentException("Size not found!");
         }
     }
 

@@ -27,7 +27,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -111,11 +110,12 @@ public class RpmBuilder implements AutoCloseable {
     public enum Version {
         V4_11("4.11"),
         V4_12("4.12"),
-        V4_14("4.14");
+        V4_14("4.14"),
+        V5_99("5.99"),;
 
         private final String versionString;
 
-        private Version(final String versionString) {
+        Version(final String versionString) {
             this.versionString = versionString;
         }
 
@@ -200,13 +200,8 @@ public class RpmBuilder implements AutoCloseable {
                 return false;
             }
             if (getDescription() == null) {
-                if (other.getDescription() != null) {
-                    return false;
-                }
-            } else if (!getDescription().equals(other.getDescription())) {
-                return false;
-            }
-            return true;
+                return other.getDescription() == null;
+            } else return getDescription().equals(other.getDescription());
         }
 
         @Override
@@ -216,7 +211,7 @@ public class RpmBuilder implements AutoCloseable {
 
     }
 
-    private static List<Feature> features = new ArrayList<>();
+    private static final List<Feature> features = new ArrayList<>(10);
 
     static {
 
@@ -232,8 +227,6 @@ public class RpmBuilder implements AutoCloseable {
         if (ZstdUtils.isZstdCompressionAvailable()) {
             features.add(new Feature("PayloadIsZstd", "5.4.18-1", "package payload can be compressed using zstd."));
         }
-
-        features = Collections.unmodifiableList(features);
     }
 
     public static class FileEntry {
@@ -273,6 +266,10 @@ public class RpmBuilder implements AutoCloseable {
 
         public long getSize() {
             return this.size;
+        }
+
+        public boolean isLargeFile() {
+            return size > Integer.MAX_VALUE;
         }
 
         public void setUser(final String user) {
@@ -566,7 +563,7 @@ public class RpmBuilder implements AutoCloseable {
          *
          * @since 0.15.2
          */
-        private void customizeVerificationFlags(FileEntry entry, FileInformation information) {
+        private void customizeVerificationFlags(final FileEntry entry, final FileInformation information) {
             final Collection<VerifyFlags> informationVerifyFlags = information.getVerifyFlags();
             if (informationVerifyFlags == null) {
                 return; // bail out - entry's verification flag bitmask will remain -1 (meaning: verify
@@ -660,6 +657,10 @@ public class RpmBuilder implements AutoCloseable {
 
         this.options = options == null ? new BuilderOptions() : new BuilderOptions(options);
 
+        if (this.options.getRpmFormat() >= 6) {
+            this.requiredRpmVersion = Version.V5_99;
+        }
+
         this.targetFile = makeTargetFile(targetFile);
 
         this.recorder = new PayloadRecorder(this.options.getPayloadCoding(), this.options.getPayloadFlags(), this.options.getFileDigestAlgorithm(), this.options.getPayloadProcessors());
@@ -680,11 +681,11 @@ public class RpmBuilder implements AutoCloseable {
     }
 
     public void addDefaultSignatureProcessors() {
-        addSignatureProcessor(SignatureProcessors.size());
+        addSignatureProcessor(SignatureProcessors.size(this.options.getRpmFormat()));
         addSignatureProcessor(SignatureProcessors.sha256Header());
         addSignatureProcessor(SignatureProcessors.sha1Header());
         addSignatureProcessor(SignatureProcessors.md5());
-        addSignatureProcessor(SignatureProcessors.payloadSize());
+        addSignatureProcessor(SignatureProcessors.payloadSize(this.options.getRpmFormat()));
     }
 
     public void setLeadOverrideArchitecture(final Architecture leadOverrideArchitecture) {
@@ -717,6 +718,12 @@ public class RpmBuilder implements AutoCloseable {
         this.provides.add(new Dependency(this.name, this.version.toString(), RpmDependencyFlags.EQUAL));
     }
 
+    /**
+     * {@link Header#makeEntries()} always puts {@link java.nio.charset.StandardCharsets#UTF_8}, so if {@link
+     * BuilderOptions#getRpmFormat()} is {@code >= 6}, we put {@link RpmTag#ENCODING} {@code "utf-8"} to the header.
+     *
+     * @param finished the finished
+     */
     private void fillHeader(final PayloadRecorder.Finished finished) {
         this.header.putString(RpmTag.PAYLOAD_FORMAT, "cpio");
 
@@ -732,7 +739,12 @@ public class RpmBuilder implements AutoCloseable {
             this.header.putString(RpmTag.PAYLOAD_FLAGS, payloadFlags.toString());
         }
 
-        this.header.putStringArray(100, "C");
+        this.header.putStringArray(RpmTag.HEADER_I18NTABLE, "C");
+
+        if (this.options.getRpmFormat() >= 6) {
+            this.header.putInt(RpmTag.RPM_FORMAT, this.options.getRpmFormat());
+            this.header.putString(RpmTag.ENCODING, "utf-8");
+        }
 
         this.header.putString(RpmTag.NAME, this.name);
         this.header.putString(RpmTag.VERSION, this.version.getVersion());
@@ -784,12 +796,18 @@ public class RpmBuilder implements AutoCloseable {
             Arrays.sort(files, comparing(FileEntry::getTargetName));
 
             final long installedSize = Arrays.stream(files).mapToLong(FileEntry::getTargetSize).sum();
-            this.header.putSize(installedSize, RpmTag.SIZE, RpmTag.LONGSIZE);
+            this.header.putSize(installedSize, RpmTag.SIZE, RpmTag.LONGSIZE, this.options.getRpmFormat());
 
             final Collection<FileEntry> filesList = Arrays.asList(files);
+            final boolean hasLargeFiles = this.options.getRpmFormat() >= 6 || filesList.stream().anyMatch(FileEntry::isLargeFile);
 
-            // TODO: implement LONG file sizes
-            Header.putIntFields(this.header, filesList, RpmTag.FILE_SIZES, entry -> (int) entry.getSize());
+            if (hasLargeFiles) {
+                Header.putLongFields(this.header, filesList, RpmTag.LONG_FILE_SIZES, FileEntry::getSize);
+                features.add(new Feature("LargeFiles", "4.12.0-1", "support files larger than 4GB"));
+            } else {
+                Header.putIntFields(this.header, filesList, RpmTag.FILE_SIZES, entry -> (int) entry.getSize());
+            }
+
             Header.putShortFields(this.header, filesList, RpmTag.FILE_MODES, FileEntry::getMode);
             Header.putShortFields(this.header, filesList, RpmTag.FILE_RDEVS, FileEntry::getRdevs);
             Header.putIntFields(this.header, filesList, RpmTag.FILE_MTIMES, FileEntry::getModificationTime);
@@ -834,7 +852,7 @@ public class RpmBuilder implements AutoCloseable {
                 this.header.putStringArray(RpmTag.DIRNAMES, dirnames.toArray(new String[0]));
             }
         } else {
-            this.header.putSize(0, RpmTag.SIZE, RpmTag.LONGSIZE);
+            this.header.putSize(0, RpmTag.SIZE, RpmTag.LONGSIZE, this.options.getRpmFormat());
         }
 
         // add additional headers
@@ -843,7 +861,7 @@ public class RpmBuilder implements AutoCloseable {
     }
 
     private static void putNumber(final LongMode longMode, final Header<RpmTag> header, final Collection<FileEntry> files, final RpmTag tag, final ToLongFunction<FileEntry> func) {
-        boolean useLong;
+        final boolean useLong;
         if (longMode == LongMode.FORCE_64BIT) {
             // no need to check, got with 64bit
             useLong = true;
@@ -1065,7 +1083,7 @@ public class RpmBuilder implements AutoCloseable {
 
         final short smode = (short) (mode | CpioConstants.C_ISDIR);
 
-        final Result result = this.recorder.addDirectory("./" + pathName.toString(), cpioCustomizer(mtime, inode, smode));
+        final Result result = this.recorder.addDirectory("./" + pathName, cpioCustomizer(mtime, inode, smode));
 
         Consumer<FileEntry> c = this::initEntry;
         c = c.andThen(entry -> {
@@ -1091,7 +1109,7 @@ public class RpmBuilder implements AutoCloseable {
 
         final short smode = (short) (mode | CpioConstants.C_ISLNK);
 
-        final Result result = this.recorder.addSymbolicLink("./" + pathName.toString(), linkTo, cpioCustomizer(mtime, inode, smode));
+        final Result result = this.recorder.addSymbolicLink("./" + pathName, linkTo, cpioCustomizer(mtime, inode, smode));
 
         Consumer<FileEntry> c = this::initEntry;
         c = c.andThen(entry -> {
@@ -1265,7 +1283,7 @@ public class RpmBuilder implements AutoCloseable {
         }
     }
 
-    private void addInterpreterRequirement(final String interpreter, RpmDependencyFlags scriptPhaseFlag) {
+    private void addInterpreterRequirement(final String interpreter, final RpmDependencyFlags scriptPhaseFlag) {
         if (isEmbeddedLuaInterpreter(interpreter)) {
             addRequirement(EMBEDDED_LUA_INTERPRETER_REQUIREMENT_NAME, EMBEDDED_LUA_INTERPRETER_REQUIREMENT_VERSION,
                 RpmDependencyFlags.LESS, RpmDependencyFlags.EQUAL, RpmDependencyFlags.RPMLIB);
