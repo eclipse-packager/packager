@@ -74,7 +74,7 @@
         <java.release>11</java.release>
         <java.source>11</java.source>
 
-        <assertj.version>3.25.3</assertj.version>
+        <assertj.version>3.27.7</assertj.version>
         <bouncycastle.version>1.78</bouncycastle.version>
         <commons-compress.version>1.28.0</commons-compress.version>
         <commons-codec.version>1.16.1</commons-codec.version>
