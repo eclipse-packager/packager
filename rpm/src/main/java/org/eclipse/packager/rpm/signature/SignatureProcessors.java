@@ -25,7 +25,7 @@ public final class SignatureProcessors {
     private SignatureProcessors() {
     }
 
-    public static SignatureProcessor size() {
+    public static SignatureProcessor size(final int rpmFormat) {
         return new SignatureProcessor() {
 
             private long headerSize;
@@ -44,12 +44,12 @@ public final class SignatureProcessors {
 
             @Override
             public void finish(final Header<RpmSignatureTag> signature) {
-                signature.putSize(this.headerSize + this.payloadSize, RpmSignatureTag.SIZE, RpmSignatureTag.LONGSIZE);
+                signature.putSize(this.headerSize + this.payloadSize, RpmSignatureTag.SIZE, RpmSignatureTag.LONGSIZE, rpmFormat);
             }
         };
     }
 
-    public static SignatureProcessor payloadSize() {
+    public static SignatureProcessor payloadSize(final int rpmFormat) {
         return new SignatureProcessor() {
 
             private long archiveSize;
@@ -69,7 +69,7 @@ public final class SignatureProcessors {
 
             @Override
             public void finish(final Header<RpmSignatureTag> signature) {
-                signature.putSize(this.archiveSize, RpmSignatureTag.PAYLOAD_SIZE, RpmSignatureTag.LONGARCHIVESIZE);
+                signature.putSize(this.archiveSize, RpmSignatureTag.PAYLOAD_SIZE, RpmSignatureTag.LONGARCHIVESIZE, rpmFormat);
             }
         };
     }

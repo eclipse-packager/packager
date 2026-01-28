@@ -27,28 +27,53 @@ public class PayloadProcessors {
     }
 
     /**
-     * Create the payload digest values for @{link {@link RpmTag#PAYLOAD_DIGEST}
-     * and @{link
-     * {@link RpmTag#PAYLOAD_DIGEST_ALT}}
+     * Create the payload size values for @{link {@link RpmTag#PAYLOAD_SIZE} and {@link RpmTag#PAYLOAD_SIZE_ALT}}.
      *
-     * @param algorithm The digest algorithm to use.
+     * @return the payload processor
+     */
+    public static PayloadProcessor payloadSize() {
+        return new PayloadProcessor() {
+            private long payloadSize;
+
+            private long archiveSize;
+
+            @Override
+            public void feedRawPayloadData(final ByteBuffer data) {
+                payloadSize += data.remaining();
+            }
+
+            @Override
+            public void feedCompressedPayloadData(final ByteBuffer data) {
+                archiveSize += data.remaining();
+            }
+
+            @Override
+            public void finish(final Header<RpmTag> header) {
+                header.putLong(RpmTag.PAYLOAD_SIZE, payloadSize);
+                header.putLong(RpmTag.PAYLOAD_SIZE_ALT, archiveSize);
+            }
+        };
+    }
+
+    /**
+     * Create the payload digest values for @{link {@link RpmTag#PAYLOAD_DIGEST} and {@link RpmTag#PAYLOAD_DIGEST_ALT}}.
+     *
+     * @param algorithm The digest algorithm to use
      * @return The payload processor
-     * @throws NoSuchAlgorithmException In case the algorithm isn't supported by the
-     *             JVM.
+     * @throws NoSuchAlgorithmException In case the algorithm isn't supported by the JVM
      */
     public static PayloadProcessor payloadDigest(final DigestAlgorithm algorithm) throws NoSuchAlgorithmException {
         final MessageDigest digestRaw = algorithm.createDigest();
         final MessageDigest digestCompressed = algorithm.createDigest();
 
         return new PayloadProcessor() {
-
             @Override
-            public void feedRawPayloadData(ByteBuffer data) {
+            public void feedRawPayloadData(final ByteBuffer data) {
                 digestRaw.update(data);
             }
 
             @Override
-            public void feedCompressedPayloadData(ByteBuffer data) {
+            public void feedCompressedPayloadData(final ByteBuffer data) {
                 digestCompressed.update(data);
             }
 
@@ -62,5 +87,4 @@ public class PayloadProcessors {
             }
         };
     }
-
 }

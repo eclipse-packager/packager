@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 
+import org.eclipse.packager.rpm.RpmFormat;
 import org.eclipse.packager.rpm.coding.PayloadCoding;
 import org.eclipse.packager.rpm.coding.PayloadFlags;
 
@@ -38,6 +39,7 @@ public class BuilderOptions {
 
     private static final PayloadFlags DEFAULT_PAYLOAD_FLAGS = new PayloadFlags(DEFAULT_PAYLOAD_CODING, 9);
 
+    private int rpmFormat = RpmFormat.DEFAULT.getFormat();
 
     private LongMode longMode = LongMode.DEFAULT;
 
@@ -59,11 +61,12 @@ public class BuilderOptions {
         try {
             this.payloadProcessors.add(PayloadProcessors.payloadDigest(DigestAlgorithm.SHA256));
         } catch (final Exception e) {
-            // We silently ignore the case that SHA1 isn't available
+            // We silently ignore the case that SHA256 isn't available
         }
     }
 
     public BuilderOptions(final BuilderOptions other) {
+        setRpmFormat(other.rpmFormat);
         setLongMode(other.longMode);
         setOpenOptions(other.openOptions);
         setFileNameProvider(other.fileNameProvider);
@@ -72,6 +75,18 @@ public class BuilderOptions {
         setFileDigestAlgorithm(other.fileDigestAlgorithm);
         setHeaderCharset(other.headerCharset);
         setPayloadProcessors(other.payloadProcessors);
+    }
+
+    public int getRpmFormat() {
+        return this.rpmFormat;
+    }
+
+    public void setRpmFormat(final int rpmFormat) {
+        this.rpmFormat = RpmFormat.fromFormat(rpmFormat).getFormat();
+
+        if (this.rpmFormat >= 6) {
+            this.payloadProcessors.add(PayloadProcessors.payloadSize());
+        }
     }
 
     public LongMode getLongMode() {

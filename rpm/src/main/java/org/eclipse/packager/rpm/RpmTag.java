@@ -17,6 +17,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 public enum RpmTag implements RpmBaseTag {
+    HEADER_SIGNATURES(62, byte[].class),
+    HEADER_IMMUTABLE(63, byte[].class),
+    HEADER_I18NTABLE(100, String.class),
     NAME(1000, String.class),
     VERSION(1001, String.class),
     RELEASE(1002, String.class),
@@ -94,6 +97,10 @@ public enum RpmTag implements RpmBaseTag {
     POSTTRANSACTION_SCRIPT(1152, String.class),
     PRETRANSACTION_SCRIPT_PROG(1153, String[].class),
     POSTTRANSACTION_SCRIPT_PROG(1154, String[].class),
+    /**
+     * File size (when files &gt; 4GB are present). Always used in RPM 6.
+     */
+    LONG_FILE_SIZES(5008, Long[].class),
     LONGSIZE(5009, Long.class),
     FILE_DIGESTALGO(5011, Integer.class),
     RECOMMEND_NAME(5046, String[].class),
@@ -108,16 +115,34 @@ public enum RpmTag implements RpmBaseTag {
     ENHANCE_NAME(5055, String[].class),
     ENHANCE_VERSION(5056, String[].class),
     ENHANCE_FLAGS(5057, Integer[].class),
+    /**
+     * Encoding of the header string data. When present it is always "utf-8" and the data has actually been validated.
+     * Always present in RPM 6.
+     */
+    ENCODING(5062, String.class),
 
     PAYLOAD_DIGEST(5092, String[].class),
     PAYLOAD_DIGEST_ALGO(5093, Integer.class),
-    PAYLOAD_DIGEST_ALT(5097, String[].class);
+    PAYLOAD_DIGEST_ALT(5097, String[].class),
+
+    /**
+     * The compressed payload size.
+     */
+    PAYLOAD_SIZE(5112, Long.class),
+    /**
+     * The uncompressed payload size.
+     */
+    PAYLOAD_SIZE_ALT(5113, Long.class),
+    /**
+     * The RPM version number (version 6 or later).
+     */
+    RPM_FORMAT(5114, Integer.class);
 
     private final Integer value;
 
     private final Class<?> dataType;
 
-    <T> RpmTag(final Integer value, Class<T> dataType) {
+    <T> RpmTag(final Integer value, final Class<T> dataType) {
         this.value = value;
         this.dataType = dataType;
     }
@@ -145,7 +170,7 @@ public enum RpmTag implements RpmBaseTag {
 
     @Override
     public String toString() {
-        RpmTag tag = find(this.value);
+        final RpmTag tag = find(this.value);
         return dataType.getSimpleName() + " " + (tag != null ? tag.name() + "(" + this.value + ")" : "UNKNOWN(" + this.value + ")");
     }
 }
